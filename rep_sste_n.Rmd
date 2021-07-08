@@ -1,0 +1,147 @@
+---
+title: "Vignette Title"
+author: "Vignette Author"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+## libraries
+```{r}
+library(sf)
+library(spdep)
+library(dplyr)
+library(brms)
+```
+
+## data from paper
+```{r}
+spdat<-st_read("~/Documents/GitHub/previous_research/SSTE_dataandcode/datafinal6911_joinwroad_abc.shp")
+
+
+spdat<-spdat%>%
+  mutate(zabc = as.numeric(scale(Count_2/POPSIZE)),
+         zinten = as.numeric(scale(MEAN)), 
+         ziso = as.numeric(scale(isol)), 
+         zforn = as.numeric(scale(pforborn_1)),
+         zresins = as.numeric(scale(p5yrinmig)))
+         
+
+# dat$zabc<-as.numeric(scale(dat$abcpc, center=T, scale=T))
+# dat$zinten<-as.numeric(scale(dat$inten, center=T, scale=T))
+# dat$hwy<-ifelse(dat$NEAR_DIST>200,0,1)
+# dat$inten<-dat$MEAN
+# dat$landmix<-dat$MEAN_1
+# dat$abcpc<-1000*(dat$Count_2/dat$POPSIZE)
+# dat$ziso<-as.numeric(scale(dat$isol, center=T, scale=T))
+# dat$zdis<-as.numeric(scale(dat$dissim, center=T, scale=T))
+# dat$zforn<-as.numeric(scale(dat$pforborn_1, center=T, scale=T))
+# dat$zresins<-as.numeric(scale(dat$p5yrinmig, center=T, scale=T))
+
+```
+
+
+### spatial network
+```{r}
+spdat$struct<- 1:dim(spdat)[1]
+sanb<-knn2nb(knearneigh(st_centroid(spdat), k=3), row.names =spdat$struct)
+sanb<-make.sym.nb(sanb)
+summary(sanb)
+salw<-nb2listw(sanb, style="W")
+mat<-nb2mat(sanb, zero.policy = NULL, style="B")
+mat <- as.matrix(mat[1:dim(mat)[1], 1:dim(mat)[1]])
+
+mat[lower.tri(mat)] = t(mat)[lower.tri(mat)]
+
+```
+
+## model
+```{r}
+dat<-st_as_sf(spdat)
+
+p1<- c(set_prior("normal(0, 100)", class = "b"),
+                    set_prior("inv_gamma(.5, .005)", class = "sdcar"))
+
+p2<-c(set_prior("normal(0, 100)", class = "b"),
+                    set_prior("uniform(0,10)", class = "sdcar"))
+
+p3<-c(set_prior("normal(0, 100)", class = "b"),
+                    set_prior("cauchy(0,5)", class = "sdcar"))
+  
+```
+
+## Model
+
+$$y_{ij} \sim Pois(\lambda_{ij} E_{ij})$$
+$$log(\lambda_{ij} ) = log(E_{ij}) + \beta_{0}+ x'\beta_k +u_j + v_i $$
+$$ u_j \sim Normal(0, \sigma_u)$$
+$$ v_j \sim \text{CAR } Normal(0, \sigma_v/n_j)$$
+
+```{r}
+
+fit2<-brm(vcrimert~offset(log(expvcrime))+zabc+ziso+zforn+ne_bad+zinten+zresins+ car(M=mat, gr = struct, type = "bym"),
+          family=poisson,
+          prior = p1,
+          data2=list(mat=mat) ,
+          data=dat,
+          thin=5,
+          cores=2,
+          chains=2,
+          iter=10000,
+          warmup=4000,
+          control = list(adapt_delta=.9, max_treedepth =15),
+          save_pars= save_pars(all=TRUE))
+
+summary(fit2)
+```
+
+
+```{r}
+#spatial random effect
+spran<-ranef(fit2, groups="struct")
+spdat$spran<-exp(spran$struct[,1,1])
+plot(spdat["spran"])
+
+spran2<-data.frame(ranef(fit2, groups="struct", summary = FALSE))
+
+spdat$exceedprob<- apply(spran2, MARGIN = 2, FUN = function(x) mean(x>0))
+
+library(tmap)
+tm_shape(spdat)+
+  tm_polygons("spran", style="kmeans", n=8,legend.hist = TRUE) +
+  tm_layout(legend.outside = TRUE) 
+
+```
+
+```{r}
+
+pred_brm<-predict(fit2, spdat,  nsamples = 1000, summary = F)
+pred_brm <-pred_brm/ as.numeric(spdat$expvcrime)
+
+spdat$rr_expprob <- apply(pred_brm, MARGIN = 2, FUN = function(x) mean(x>1.5))
+
+tm_shape(spdat)+
+  tm_polygons("rr_expprob", style="fixed", breaks = c(0, .3,.5, .9, .95, 1),legend.hist = TRUE) +
+  tm_layout(legend.outside = TRUE) 
+
+
+spdat$pred_brm<- predict(fit2, spdat, re_formula = ~(1|struct))[, 1]
+summary(spdat$pred_brm)
+
+spdat$pred_rr <- spdat$pred_brm/spdat$exppcrime
+
+tm_shape(spdat)+
+  tm_polygons("pred_rr", style="fixed",palette = "RdBu",n=6,
+              breaks = c(.01,.25, .5,1, 1.5, 2, 3.5),
+              legend.hist = TRUE) +
+  tm_layout(legend.outside = TRUE) 
+
+
+```
+
