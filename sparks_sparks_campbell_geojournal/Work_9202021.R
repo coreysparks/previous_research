@@ -6,7 +6,7 @@ library(RColorBrewer)
 library(tidyverse)
 library(sf)
 
-us.state.outline<-readShapeLines("T:/users/ozd504/Work/Papers_Manuscripts/InfantMortManuscript/USStateOutline.shp",  proj4string=CRS("+proj=lcc"))
+#us.state.outline<-readShapeLines("T:/users/ozd504/Work/Papers_Manuscripts/InfantMortManuscript/USStateOutline.shp",  proj4string=CRS("+proj=lcc"))
 #this is original data, all counties
 #usdat<-readShapePoly("/Volumes/demography/users/ozd504/Work/Papers_Manuscripts/InfantMortManuscript/datafile530final.shp",  proj4string=CRS("+proj=lcc"))
 
@@ -16,7 +16,19 @@ us.state.outline<-readShapeLines("T:/users/ozd504/Work/Papers_Manuscripts/Infant
 #us.nb<-poly2nb(usdat, queen=T)
 
 #writePolyShape(usdat, "/Volumes/demography/users/ozd504/Work/Papers_Manuscripts/InfantMortManuscript/bayesuscounty.shp")
-usdat<-st_read("bayesuscounty.shp",  proj4string=CRS("+proj=lcc"))
+usdat<-st_read("bayesuscounty.shp")
+st_geometry(usdat)<-NULL
+cos<-tigris::counties(cb=T)
+usdat<-left_join(cos, usdat, by=c("GEOID" = "COFIPS"))
+usdat<-usdat%>%
+        filter(complete.cases(f1194803, f1254603))
+class(usdat)
+usdat<-st_transform(usdat, crs = 2163)
+
+usdat%>%
+        ggplot()+
+        geom_sf(aes(fill= UNEMP, color=UNEMP))
+#usdat<-st_crs(7149)
 us.nb<-poly2nb(usdat, queen=T)
 names(usdat)
 us.wtw<-nb2listw(us.nb, zero.policy=T)
@@ -57,7 +69,7 @@ usdat$smr03<-usdat$infd03/usdat$E
 tid<-moran.mc(usdat$infd03, listw=us.wtw, zero.policy=T,  nsim=999 )
 tsmr<-moran.mc(usdat$smr, listw=us.wtw, zero.policy=T,  nsim=999 )
 
-t1<-moran.mc(usdat$PRURAL2K, listw=us.wtw, zero.policy=T,  nsim=999 )
+t1<-moran.mc(usdat$PRURAL2K, listw=us.wtw, zero.policy=T, nsim=999 )
 t2<-moran.mc(usdat$giniz, listw=us.wtw, zero.policy=T,  nsim=999 )
 t3<-moran.mc(usdat$ne_bad, listw=us.wtw, zero.policy=T,  nsim=999 )
 t4<-moran.mc(usdat$DISSWB, listw=us.wtw, zero.policy=T, nsim=999 )
@@ -76,6 +88,7 @@ desdatdf<-list(controls=data.frame(meanscontrols=mean(usdat@data[,c("infd03", "E
 sdcontrols=sd(usdat@data[,c("infd03", "E","smr03", "GINI00", "PRURAL2K", "ne_bad")], na.rm=T)),
 seg=data.frame(meanseg=mean(usdat@data[,c("DISSWB", "DISSPR", "ISOBW", "ISOPR", "SPSEGR", "SPSEGP")]),
 sdseg=sd(usdat@data[,c("DISSWB", "DISSPR", "ISOBW", "ISOPR", "SPSEGR", "SPSEGP")])),
+
 moran.stats<-data.frame(infd=tid$statistic, smr=tsmr$statistic,rural=t1$statistic,gini=t2$statistic,depr=t3$statistic,
 disbw=t4$statistic,dispr=t5$statistic,isobw=t6$statistic,isopr=t7$statistic,
 spbw=t8$statistic,sppr=t9$statistic))
@@ -89,7 +102,7 @@ usdat$bgt10<-ifelse(usdat$births03>=10,1,0)
 usdat$lcismr<-(qchisq(p=.95,df=2*usdat$infd03,log.p=F, lower.tail=F)*.5 )/usdat$E
 usdat$ucismr<-(qchisq(p=.05,df=2*usdat$infd03+1,log.p=F, lower.tail=F)*.5 )/usdat$E
 usdat$smrgt1<-ifelse(usdat$ucismr>1&usdat$lcismr>1,1,0)
-spplot(usdat, "smrgt1")
+#spplot(usdat, "smrgt1")
 
 usdat$disswbz<-as.numeric(scale(usdat$DISSWB, center=T, scale=T))
 usdat$disspz<-as.numeric(scale(usdat$DISSPR, center=T, scale=T))
@@ -116,38 +129,38 @@ fit.4<-glm(infd03~offset(log(E+.000001))+SPSEGP, family=poisson, data=usdat)
 
 AIC(fit.0);AIC(fit.1); AIC(fit.2); AIC(fit.3); AIC(fit.4); AIC (fit.5)
 
-library(MCMCglmm)
-prior1<-list(G=list(G1=list(V=diag(9), nu=9), R=list(V=diag(9), nu=9)))
-prior.flatvar<-list(R=list(V=1e-16, nu=-2),G=list(G1=list(V=1e-16,
-nu=-2)))
-prior2 = list(B= list (mu = matrix(c(0,1,0,0,0,0),6),V = diag(6)*1e+6))
-diag(prior2$B$V)[2]<-(1e-6)
+# library(MCMCglmm)
+# prior1<-list(G=list(G1=list(V=diag(9), nu=9), R=list(V=diag(9), nu=9)))
+# prior.flatvar<-list(R=list(V=1e-16, nu=-2),G=list(G1=list(V=1e-16,
+# nu=-2)))
+# prior2 = list(B= list (mu = matrix(c(0,1,0,0,0,0),6),V = diag(6)*1e+6))
+# diag(prior2$B$V)[2]<-(1e-6)
+# 
+# dat<-usdat@data
+# 
+# fit.b1<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+DISSWB+ne_bad,data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
+# fit.b2<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+DISSPR+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
+# 
+# fit.b3<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+ISOBW+ne_bad, data=dat,prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
+# fit.b4<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+ISOPR+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
+# fit.b5<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+SPSEGR+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
+# fit.b6<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+SPSEGP+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
+# summary(fit.b1);summary(fit.b2);summary(fit.b3);summary(fit.b4);summary(fit.b5);summary(fit.b6)
 
-dat<-usdat@data
-
-fit.b1<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+DISSWB+ne_bad,data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
-fit.b2<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+DISSPR+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
-
-fit.b3<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+ISOBW+ne_bad, data=dat,prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
-fit.b4<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+ISOPR+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
-fit.b5<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+SPSEGR+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
-fit.b6<-MCMCglmm(infd03~log(E+.000001)+ giniz+PRURAL2K+SPSEGP+ne_bad, data=dat, prior=prior2,family="poisson", verbose=F, burnin=50000, nitt=100000, thin=50)
-summary(fit.b1);summary(fit.b2);summary(fit.b3);summary(fit.b4);summary(fit.b5);summary(fit.b6)
-
-library(spdep)
-fit.sp1<-errorsarlm(smr03~giniz+PRURAL2K+DISSWB+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
-fit.sp2<-errorsarlm(smr03~giniz+PRURAL2K+DISSPR+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
-fit.sp3<-errorsarlm(smr03~giniz+PRURAL2K+ISOBW+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
-fit.sp4<-errorsarlm(smr03~giniz+PRURAL2K+ISOPR+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
-fit.sp5<-errorsarlm(smr03~giniz+PRURAL2K+SPSEGR+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
-fit.sp6<-errorsarlm(smr03~giniz+PRURAL2K+SPSEGP+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
-
-summary(fit.sp1);summary(fit.sp2);summary(fit.sp3);summary(fit.sp4);summary(fit.sp5);summary(fit.sp6)
+# library(spdep)
+# fit.sp1<-errorsarlm(smr03~giniz+PRURAL2K+DISSWB+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
+# fit.sp2<-errorsarlm(smr03~giniz+PRURAL2K+DISSPR+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
+# fit.sp3<-errorsarlm(smr03~giniz+PRURAL2K+ISOBW+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
+# fit.sp4<-errorsarlm(smr03~giniz+PRURAL2K+ISOPR+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
+# fit.sp5<-errorsarlm(smr03~giniz+PRURAL2K+SPSEGR+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
+# fit.sp6<-errorsarlm(smr03~giniz+PRURAL2K+SPSEGP+ne_bad, data=dat,listw=us.wtw,method="Matrix", na.action="na.omit")
+# 
+# summary(fit.sp1);summary(fit.sp2);summary(fit.sp3);summary(fit.sp4);summary(fit.sp5);summary(fit.sp6)
 
 
 cols<-brewer.pal(n=5,"Blues")
 brks.smr<-classIntervals(usdat$smr, n=4, style="quantile")
-postscript(file="/Volumes/Macintosh HD/Users/utsamacuser/Figure1.eps",width=1000, height=800)
+#postscript(file="/Volumes/Macintosh HD/Users/utsamacuser/Figure1.eps",width=1000, height=800)
 #layout(mat=matrix(c(1,2,2,2), nrow=1,ncol=4),respect=F)
 #hist(usdat$smr, xlab="SMR",ylim=c(0,2000), ylab="Frequency", main="Distribution of SMR")
 plot(usdat,  col=cols[findInterval(usdat$smr, brks.smr$brks, all.inside=T )], border=0)
