@@ -186,7 +186,7 @@ dev.off()
 
 #prep for Winbugs
 N<-length(usdat$infd03)
-dat<-usdat@data
+dat<-st_geometry(usdat)<-NULL
 
 #attach(dat)
 d<-list(y=dat$infd03,n=dat$births03, E=dat$E, N= N, gini=dat$giniz, rural=dat$PRURAL2K, bad=as.numeric(dat$ne_bad), 
