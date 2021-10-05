@@ -61,6 +61,42 @@ mat[lower.tri(mat)] = t(mat)[lower.tri(mat)]
 
 ```
 
+## geostan
+```{r}
+library(geostan)
+
+fit <- stan_glm(vcrimert~offset(log(expvcrime)),
+                 re = ~ struct,
+                 family = poisson(),
+                 data = spdat,
+                 C = mat,
+                 refresh = 500, chains = 2, cores = parallel::detectCores() )
+
+print(fit)
+
+spdat$res<- spatial(fit)$mean
+car.dl <- prep_car_data(mat, style = "WCAR")
+1 / range(car.dl$lambda)
+fit2 <- stan_icar(vcrimert~offset(log(expvcrime)),control = list(max_treedepth=11),
+                 re = ~ struct,
+                 family = poisson(),
+                 data = spdat,
+                 C = mat,
+                 refresh = 500,iter=5000,warmup=2500, chains = 2, cores = parallel::detectCores() )
+
+print(fit2)
+
+
+spdat$res<- spatial(fit2)$mean
+
+library(ggplot2)
+library(sf)
+
+spdat%>%
+  ggplot()+geom_sf(aes(fill=res))
+```
+
+
 ## model
 ```{r}
 dat<-st_as_sf(spdat)
